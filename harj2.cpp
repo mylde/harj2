@@ -8,6 +8,8 @@
 /* Lisäohjeita, vinkkejä ja apuja löytyy koodin joukosta */
 /* OPISKELIJA: merkityt kohdat eritoten kannattaa katsoa huolella */
 
+//kommentti
+
 //peruskirjastot mitä tarvii aika lailla aina kehitystyössä
 //OPISKELIJA: lisää tarvitsemasi peruskirjastot
 #include <iostream>
