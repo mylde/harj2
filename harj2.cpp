@@ -24,6 +24,15 @@
 #include <sys/wait.h>
 #include <semaphore.h>
 #include <pthread.h> //pthread perussäiemäärittelyt
+#include <cstring>
+#include <cstdlib>
+#include <cerrno>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <cstdio>
+#include <cctype>
+#include <fcntl.h>
+
 using namespace std;
 
 //kaikkialla tarvittavat tunnisteet  määritellään globaalilla alueella
@@ -39,7 +48,9 @@ using namespace std;
 //definet voi jättää globaalille alueelle, ne on sitten tiedossa koko tiedostossa
 #define KORKEUS 100 //rivien määrä alla
 #define LEVEYS 100 //sarakkaiden määrä alla
-int labyrintti[KORKEUS][LEVEYS] = {
+
+// 1) Muutin labyrintin määrittelyä
+int initial_labyrintti[KORKEUS][LEVEYS] = {
     {1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
     {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,2,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,2,0,0,1,0,0,0,1,0,0,2,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1,1},
     {1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,1},
@@ -141,7 +152,8 @@ int labyrintti[KORKEUS][LEVEYS] = {
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1},
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,1,1},
 };
-
+// 1) Jaettua muistia osoittava pointteri
+int (*labyrintti)[LEVEYS] = nullptr;
 //apuja: voit testata ratkaisujasi myös alla olevalla yksinkertaisemmalla labyrintilla 
 //#define KORKEUS 7
 //#define LEVEYS 7
@@ -509,11 +521,89 @@ int aloitaRotta(){
     return liikkuCount;
 }
 
-//OPISKELIJA: nykyinen main on näin yksinkertainen, tästä pitää muokata se rinnakkaisuuden pohja
-int main(){
-    aloitaRotta();
-    //tämän tulee kertoa että kaikki rotat ovat päässeet ulos labyrintista
-    //viimeinen jäädytetty kuva sijaintikartasta olisi hyvä olla todistamassa sitä
-    std::cout << "Kaikki rotat ulkona!" << endl;
+// 2) Säiekääntäjä ennen mainia
+static void* threadRunner(void* /*arg*/){
+    int moves = aloitaRotta();
+    cout << "Rotta (tid " << (unsigned long)pthread_self() << ") liikkui: " << moves << " askelta\n";
+    return nullptr;
+}
+
+// 1) ja 2) Muokattu main
+int main(int argc, char* argv[]){
+    int numRats = 4;
+    bool useThreads = false;
+    for (int i = 1; i < argc; ++i){
+        if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--threads") == 0) useThreads = true;
+        else if (isdigit((unsigned char)argv[i][0])) numRats = atoi(argv[i]);
+    }
+    if (numRats <= 0) numRats = 4;
+
+    if (useThreads) {
+        // varaa labyrintti dynaamisesti säikeitä varten
+        labyrintti = new int[KORKEUS][LEVEYS];
+        memcpy(labyrintti, initial_labyrintti, KORKEUS * LEVEYS * sizeof(int));
+
+        vector<pthread_t> threads(numRats);
+        for (int i = 0; i < numRats; ++i){
+            if (pthread_create(&threads[i], nullptr, threadRunner, nullptr) != 0){
+                perror("pthread_create");
+                threads[i] = 0;
+            }
+        }
+        for (int i = 0; i < numRats; ++i){
+            if (threads[i] != 0) pthread_join(threads[i], nullptr);
+        }
+
+        delete[] labyrintti;
+        labyrintti = nullptr;
+
+        cout << "Kaikki rotat (säikeet) ulkona!" << endl;
+        return 0;
+    }
+
+    // --- olemassa oleva prosessi/fork -koodi (kopioi nykyisen prosessilohkon tähän) ---
+    size_t shmsize = KORKEUS * LEVEYS * sizeof(int);
+    int shmid = shmget(IPC_PRIVATE, shmsize, IPC_CREAT | 0600);
+    if (shmid < 0){
+        perror("shmget");
+        return 1;
+    }
+
+    labyrintti = (int (*)[LEVEYS]) shmat(shmid, nullptr, 0);
+    if (labyrintti == (void*) -1){
+        perror("shmat");
+        shmctl(shmid, IPC_RMID, nullptr);
+        return 1;
+    }
+
+    memcpy(labyrintti, initial_labyrintti, shmsize);
+
+    for (int i = 0; i < numRats; ++i){
+        pid_t pid = fork();
+        if (pid < 0){
+            perror("fork");
+            continue;
+        }
+        if (pid == 0){
+            int moves = aloitaRotta();
+            cout << "Rotta (pid " << getpid() << ") liikkui: " << moves << " askelta\n";
+            shmdt(labyrintti);
+            _exit(0);
+        }
+    }
+
+    for (int i = 0; i < numRats; ++i){
+        int status = 0;
+        pid_t w = wait(&status);
+        if (w == -1){
+            if (errno == ECHILD) break;
+            perror("wait");
+        }
+    }
+
+    shmdt(labyrintti);
+    shmctl(shmid, IPC_RMID, nullptr);
+
+    cout << "Kaikki rotat (prosessit) ulkona!" << endl;
     return 0;
 }
