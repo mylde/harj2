@@ -561,7 +561,7 @@ int main(int argc, char* argv[]){
         return 0;
     }
 
-    // --- olemassa oleva prosessi/fork -koodi (kopioi nykyisen prosessilohkon tähän) ---
+    //olemassa oleva prosessi/fork -koodi
     size_t shmsize = KORKEUS * LEVEYS * sizeof(int);
     int shmid = shmget(IPC_PRIVATE, shmsize, IPC_CREAT | 0600);
     if (shmid < 0){
