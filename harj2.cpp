@@ -419,7 +419,6 @@ int aloitaRotta(){
     LiikkumisSuunta prevDir {DEFAULT}; //edellinen suunta:jottei kuljeta edestakaisin vahingossa
     LiikkumisSuunta nextDir {DEFAULT}; //seuraava suunta
 
-    // <-- uusi: prosessien jakaman poskarttan päivityksen apu
     int prevY = KORKEUS-1-rotanSijainti.ykoord;
     int prevX = rotanSijainti.xkoord;
     if (poskartta != nullptr && pos_sem != nullptr) {
@@ -503,7 +502,6 @@ int aloitaRotta(){
 
     //päivitetään liikkujen laskuri, tällä hetkellä yksi risteykseen paluu on yksi liikku
 
-    // <-- uusi: päivitä poskarttaa (tyhjennä entinen, merkitse uusi) eksklusiivisesti
     if (poskartta != nullptr && pos_sem != nullptr){
         int newY = KORKEUS-1-rotanSijainti.ykoord;
         int newX = rotanSijainti.xkoord;
@@ -584,7 +582,7 @@ int main(int argc, char* argv[]){
 
     memcpy(labyrintti, initial_labyrintti, shmsize);
 
-    // --- UUSI: luodaan jaettu sijaintikartta poskartta ---
+    //luodaan jaettu sijaintikartta
     int pos_shmid = shmget(IPC_PRIVATE, shmsize, IPC_CREAT | 0600);
     if (pos_shmid < 0){
         perror("shmget pos");
@@ -603,13 +601,12 @@ int main(int argc, char* argv[]){
     // alustetaan nollilla
     memset(poskartta, 0, shmsize);
 
-    // avataan nimetty POSIX-semafori (1 = vapaa)
+    // avataan nimetty POSIX-semafori
     pos_sem = sem_open(POS_SEM_NAME, O_CREAT, 0600, 1);
     if (pos_sem == SEM_FAILED) {
         perror("sem_open");
-        pos_sem = nullptr; // jatketaan, mutta kirjoitukset eivät suojata
+        pos_sem = nullptr;
     }
-    // --- loppuu poskartta/sem luonti ---
 
     for (int i = 0; i < numRats; ++i){
         pid_t pid = fork();
